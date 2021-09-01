@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"io/ioutil"
 	"log"
@@ -16,6 +17,13 @@ type ValueDB struct {
 	Package string `json:"package"`
 	Value   string `json:"value"`
 	CVE     string `json:"cve"`
+}
+
+type Res struct {
+	ID      int    `gorm:"primary_key" json:"id"`
+	CveID   string `json:"cve_id"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 type Global struct {
@@ -79,7 +87,21 @@ func dbInit(g *Global) error {
 	return err
 }
 
+func dbInsert(r Res, db *gorm.DB, famliy string) error {
+	var err error
+	err = db.Create(&ValueDB{
+		CVE:     r.CveID,
+		Package: r.Name,
+		Value:   r.Version,
+		Family:  famliy,
+	}).Error
+	return err
+}
+
 var iDB *gorm.DB
+var ubuntuQuery = "select cve_id,name,version from packages,debians,advisories WHERE packages.definition_id = debians.definition_id and debians.definition_id = advisories.definition_id"
+var debainQuery = "select cve_id,name,version from packages,debians WHERE packages.definition_id = debians.definition_id"
+var redhatQuery = "select cve_id,name,version from packages,advisories,cves WHERE packages.definition_id = advisories.definition_id and advisories.id = cves.advisory_id"
 
 func main() {
 	g := loadConfig()
@@ -87,5 +109,45 @@ func main() {
 	err := dbInit(g)
 	if err != nil {
 		log.Println("Err:", err)
+	}
+	var res []Res
+	//db, err := gorm.Open(sqlite.Open("ubuntu.db"), &gorm.Config{})
+	//if err != nil {
+	//	log.Println("sqlite Err:", err)
+	//}
+	//db.Raw(ubuntuQuery).Scan(&res)
+	//for _, r := range res {
+	//	if len(r.Version) >0 {
+	//		err := dbInsert(r,iDB,"Debian")
+	//		if err != nil{
+	//			log.Println("Insert Err:",err)
+	//		}
+	//	}
+	//}
+	//db, err := gorm.Open(sqlite.Open("debian.db"), &gorm.Config{})
+	//if err != nil {
+	//	log.Println("sqlite Err:", err)
+	//}
+	//db.Raw(debainQuery).Scan(&res)
+	//for _, r := range res {
+	//	if len(r.Version) >0 {
+	//		err := dbInsert(r,iDB,"Debian")
+	//		if err != nil{
+	//			log.Println("Insert Err:",err)
+	//		}
+	//	}
+	//}
+	db, err := gorm.Open(sqlite.Open("redhat.db"), &gorm.Config{})
+	if err != nil {
+		log.Println("sqlite Err:", err)
+	}
+	db.Raw(redhatQuery).Scan(&res)
+	for _, r := range res {
+		if len(r.Version) > 0 {
+			err := dbInsert(r, iDB, "Redhat")
+			if err != nil {
+				log.Println("Insert Err:", err)
+			}
+		}
 	}
 }
